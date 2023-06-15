@@ -277,7 +277,11 @@ class PivotalTuningDatasetCapation(Dataset):
 
             text = random.choice(self.templates).format(input_tok)
         else:
-            text = self.captions[index % self.num_instance_images].strip()
+            text = self.captions[index % self.num_instance_images]
+            text = text.replace("(", "")
+            text = text.replace(")", "")
+            text = ''.join([i for i in text if not i.isdigit()])
+            text = text.strip()
 
             if self.token_map is not None:
                 for token, value in self.token_map.items():
