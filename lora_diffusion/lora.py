@@ -483,11 +483,83 @@ def save_safeloras_with_embeds(
     safe_save(weights, outpath, metadata)
 
 
+def save_safeloras_for_webui(  # made by tbq
+    modelmap: Dict[str, Tuple[nn.Module, Set[str]]] = {},
+    # embeds: Dict[str, torch.Tensor] = {},
+    outpath="./lora.safetensors",
+):
+    """
+    Saves the Lora from multiple modules in a single safetensor file.
+    modelmap is a dictionary of {
+        "module name": (module, target_replace_module)
+    }
+    """
+
+    def extract_lora_tensor(
+        model,
+        target_replace_module=DEFAULT_TARGET_REPLACE,
+        as_fp16=True,
+        prefix="lora_te",
+    ):
+
+        loras_dict = {}
+
+        for name, module in model.named_modules():
+            if module.__class__.__name__ in target_replace_module:
+                for child_name, child_module in module.named_modules():
+                    if child_module.__class__.__name__ == "LoraInjectedLinear" or (
+                        child_module.__class__.__name__ == "LoraInjectedConv2d"
+                        and child_module.kernel_size == (1, 1)
+                    ):
+                        lora_name = prefix + "." + name + "." + child_name
+                        lora_name = lora_name.replace(".", "_")
+                        up, down = child_module.realize_as_lora()
+                        alpha = torch.tensor(up.shape[1])
+                        if as_fp16:
+                            up = up.to(torch.float16)
+                            down = down.to(torch.float16)
+                            alpha = alpha.to(torch.float16)
+                        loras_dict[lora_name + ".lora_up.weight"] = up
+                        loras_dict[lora_name + ".lora_down.weight"] = down
+                        loras_dict[lora_name + ".alpha"] = alpha
+
+        if len(loras_dict) == 0:
+            raise ValueError("No lora injected.")
+
+        return loras_dict
+
+    weights = {}
+    metadata = {}
+
+    for name, (model, target_replace_module) in modelmap.items():
+        metadata[name] = json.dumps(list(target_replace_module))
+        if name == "unet":
+            weights_tmp = extract_lora_tensor(
+                model, target_replace_module, prefix="lora_unet"
+            )
+        else:
+            weights_tmp = extract_lora_tensor(
+                model, target_replace_module, prefix="lora_te"
+            )
+        weights.update(weights_tmp)
+
+    # No longer grouping TI embeddings into safetensor
+    # for token, tensor in embeds.items():
+    #     metadata[token] = EMBED_FLAG
+    #     weights[token] = tensor
+
+    print(f"Saving weights to {outpath}")
+    safe_save(weights, outpath, metadata)
+
+
 def save_safeloras(
     modelmap: Dict[str, Tuple[nn.Module, Set[str]]] = {},
     outpath="./lora.safetensors",
 ):
-    return save_safeloras_with_embeds(modelmap=modelmap, outpath=outpath)
+    save_safeloras_with_embeds(modelmap=modelmap, outpath=outpath)
+    save_safeloras_for_webui(
+        modelmap=modelmap, outpath=outpath.replace(".safetensors", "_webui.safetensors")
+    )
 
 
 def convert_loras_to_safeloras_with_embeds(
@@ -1107,4 +1179,23 @@ def save_all(
                 )
                 embeds[tok] = learned_embeds.detach().cpu()
 
-        save_safeloras_with_embeds(loras, embeds, save_path)
+        save_safeloras_with_embeds(modelmap=loras, embeds=embeds, outpath=save_path)
+
+        # Support multivector embeds and put it into AUTOMATIC11111 format
+        embed_tensors = []
+        for k, v in embeds.items():
+            embed_tensors.append(v)
+
+        embed_dict = {
+            "string_to_token": {"*": 256},
+            "string_to_param": {"*": torch.stack(tuple(embed_tensors))},
+            "name": "".join(placeholder_tokens),
+            "step": 0,
+            "sd_checkpoint": "",
+            "sd_checkpoint_name": "",
+        }
+        torch.save(embed_dict, save_path.replace(".safetensors", "_ti.bin"))
+        save_safeloras_for_webui(
+            modelmap=loras,
+            outpath=save_path.replace(".safetensors", "_webui.safetensors"),
+        )  # tbq add for webui
