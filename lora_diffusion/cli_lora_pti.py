@@ -268,6 +268,7 @@ def loss_step(
     mixed_precision=False,
     mask_temperature=1.0,
     cached_latents: bool = False,
+    mask_condition = True
 ):
     weight_dtype = torch.float32
     if not cached_latents:
@@ -337,7 +338,7 @@ def loss_step(
     else:
         raise ValueError(f"Unknown prediction type {scheduler.config.prediction_type}")
 
-    if batch.get("mask", None) is not None:
+    if batch.get("mask", None) is not None and mask_condition:
 
         mask = (
             batch["mask"]
@@ -394,6 +395,7 @@ def train_inversion(
     train_inpainting: bool = False,
     mixed_precision: bool = False,
     clip_ti_decay: bool = True,
+    mask_condition=True
 ):
 
     progress_bar = tqdm(range(num_steps))
@@ -427,6 +429,7 @@ def train_inversion(
                         train_inpainting=train_inpainting,
                         mixed_precision=mixed_precision,
                         cached_latents=cached_latents,
+                        mask_condition=mask_condition
                     )
                     / accum_iter
                 )
@@ -566,6 +569,7 @@ def perform_tuning(
     wandb_log_prompt_cnt: int = 10,
     class_token: str = "person",
     train_inpainting: bool = False,
+    mask_condition=True
 ):
 
     progress_bar = tqdm(range(num_steps))
@@ -599,6 +603,7 @@ def perform_tuning(
                 mixed_precision=True,
                 mask_temperature=mask_temperature,
                 cached_latents=cached_latents,
+                mask_condition=mask_condition
             )
             loss_sum += loss.detach().item()
 
@@ -750,8 +755,16 @@ def train(
     proxy_token: str = None,
     enable_xformers_memory_efficient_attention: bool = False,
     out_name: str = "final_lora",
+    mask_only_inversion = False
 ):
     torch.manual_seed(seed)
+
+    if mask_only_inversion==True:
+        mask_inversion = True
+        mask_tuning=False
+    else:
+        mask_inversion=True
+        mask_tuning=True
 
     if log_wandb:
         wandb.init(
@@ -941,6 +954,7 @@ def train(
             mixed_precision=False,
             tokenizer=tokenizer,
             clip_ti_decay=clip_ti_decay,
+            mask_condition=mask_inversion
         )
 
         del ti_optimizer
@@ -1049,6 +1063,7 @@ def train(
         wandb_log_prompt_cnt=wandb_log_prompt_cnt,
         class_token=class_token,
         train_inpainting=train_inpainting,
+        mask_condition=mask_tuning
     )
 
 
