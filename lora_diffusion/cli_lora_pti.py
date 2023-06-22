@@ -765,6 +765,8 @@ def train(
     else:
         mask_inversion=True
         mask_tuning=True
+    print('Masking inversion = ', mask_inversion)
+    print('Masking tuning = ', mask_tuning)
 
     if log_wandb:
         wandb.init(
