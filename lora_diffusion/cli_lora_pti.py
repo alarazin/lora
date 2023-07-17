@@ -807,8 +807,16 @@ def train(
         class_token = proxy_token
 
     if placeholder_token_at_data is not None:
-        tok, pat = placeholder_token_at_data.split("|")
-        token_map = {tok: pat}
+        if placeholder_token_at_data.split('|')>2:
+            token_map = {}
+            p_split = placeholder_token_at_data.split('-')
+            for tok_match in p_split:
+                tok, pat = tok_match.split('|')
+                token_map[tok] = pat
+
+        else:
+            tok, pat = placeholder_token_at_data.split("|")
+            token_map = {tok: pat}
 
     else:
         token_map = {"DUMMY": "".join(placeholder_tokens)}
