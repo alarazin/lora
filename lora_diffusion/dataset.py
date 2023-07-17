@@ -141,6 +141,7 @@ class PivotalTuningDatasetCapation(Dataset):
         self.tokenizer = tokenizer
         self.resize = resize
         self.train_inpainting = train_inpainting
+        self.external_captions=None
 
         instance_data_root = Path(instance_data_root)
         if not instance_data_root.exists():
@@ -181,8 +182,13 @@ class PivotalTuningDatasetCapation(Dataset):
             )
 
             self.instance_images_path = list(set(possibily_src_images))
-            self.captions = [
-                x.split("/")[-1].split(".")[0] for x in self.instance_images_path
+
+            possibly_src_captions = glob.glob(str(instance_data_root) + "/*.txt")
+            if len(possibly_src_captions)>0:
+                self.external_captions = True
+            else:
+                self.captions = [
+                    x.split("/")[-1].split(".")[0] for x in self.instance_images_path
             ]
 
         assert (
@@ -258,8 +264,9 @@ class PivotalTuningDatasetCapation(Dataset):
 
     def __getitem__(self, index):
         example = {}
+        path = self.instance_images_path[index % self.num_instance_images]
         instance_image = Image.open(
-            self.instance_images_path[index % self.num_instance_images]
+            path
         )
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
@@ -276,6 +283,15 @@ class PivotalTuningDatasetCapation(Dataset):
             input_tok = list(self.token_map.values())[0]
 
             text = random.choice(self.templates).format(input_tok)
+
+        elif self.external_captions:
+            caption_path = path.with_suffix(".txt")
+            if caption_path.exists():
+                with open(caption_path, 'r') as f:
+                    text = f.read()
+            else:
+                print('No caption for image ', path)
+
         else:
             text = self.captions[index % self.num_instance_images]
             text = text.replace("(", "")
@@ -283,9 +299,9 @@ class PivotalTuningDatasetCapation(Dataset):
             text = ''.join([i for i in text if not i.isdigit()])
             text = text.strip()
 
-            if self.token_map is not None:
-                for token, value in self.token_map.items():
-                    text = text.replace(token, value)
+        if self.token_map is not None:
+            for token, value in self.token_map.items():
+                text = text.replace(token, value)
 
         print(text)
 
