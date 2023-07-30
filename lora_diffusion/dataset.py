@@ -294,9 +294,12 @@ class PivotalTuningDatasetCapation(Dataset):
 
         else:
             text = self.captions[index % self.num_instance_images]
+            if "(" in text:
+                text = ''.join([i for i in text if not i.isdigit()])
+
             text = text.replace("(", "")
             text = text.replace(")", "")
-            text = ''.join([i for i in text if not i.isdigit()])
+            #text = ''.join([i for i in text if not i.isdigit()])
             text = text.strip()
 
         if self.token_map is not None:
